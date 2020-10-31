@@ -185,9 +185,14 @@ final class PostProcessorRegistrationDelegate {
 		beanFactory.clearMetadataCache();
 	}
 
+	/**
+	 * 通过查看此方法发现，BeanPostProcessor 存在优先级，实现了 PriorityOrdered 接口的优先级最高，其次是 Ordered 接口，最后是普通的 BeanPostProcessor。
+	 * 优先级最高的，会最先放入到 beanPostProcessors 这个集合的最前面，这样在执行时，会最先执行优先级最高的后置处理器（因为 List 集合是有序的）
+	 * 这样在实际应用中，如果我们碰到需要优先让某个 BeanPostProcessor 执行，则可以让其实现 PriorityOrdered 接口或者 Ordered 接口
+	 */
 	public static void registerBeanPostProcessors(
 			ConfigurableListableBeanFactory beanFactory, AbstractApplicationContext applicationContext) {
-
+		// 从 BeanDefinitionMap 中找出所有的 BeanPostProcessor
 		String[] postProcessorNames = beanFactory.getBeanNamesForType(BeanPostProcessor.class, true, false);
 
 		// Register BeanPostProcessorChecker that logs an info message when
@@ -202,8 +207,10 @@ final class PostProcessorRegistrationDelegate {
 		List<BeanPostProcessor> internalPostProcessors = new ArrayList<>();
 		List<String> orderedPostProcessorNames = new ArrayList<>();
 		List<String> nonOrderedPostProcessorNames = new ArrayList<>();
+		// 分别找出实现了 PriorityOrdered、Ordered 接口及普通的 BeanPostProcessor
 		for (String ppName : postProcessorNames) {
 			if (beanFactory.isTypeMatch(ppName, PriorityOrdered.class)) {
+				// 此处调用了 getBean() 方法，因此在此处就会实例化出 BeanPostProcessor
 				BeanPostProcessor pp = beanFactory.getBean(ppName, BeanPostProcessor.class);
 				priorityOrderedPostProcessors.add(pp);
 				if (pp instanceof MergedBeanDefinitionPostProcessor) {
@@ -220,9 +227,12 @@ final class PostProcessorRegistrationDelegate {
 
 		// First, register the BeanPostProcessors that implement PriorityOrdered.
 		sortPostProcessors(priorityOrderedPostProcessors, beanFactory);
+		// 将实现了 PriorityOrdered 接口的 BeanPostProcessor 添加到 BeanFactory 的 beanPostProcessors 集合中
 		registerBeanPostProcessors(beanFactory, priorityOrderedPostProcessors);
 
 		// Next, register the BeanPostProcessors that implement Ordered.
+		// 下面这部分代码与上面的代码逻辑一致，是将实现了 Ordered 接口以及普通的 BeanPostProcessor 实例化以及添加到 beanPostProcessors 集合中
+		// 逻辑与处理 PriorityOrdered 的后置处理器一样
 		List<BeanPostProcessor> orderedPostProcessors = new ArrayList<>();
 		for (String ppName : orderedPostProcessorNames) {
 			BeanPostProcessor pp = beanFactory.getBean(ppName, BeanPostProcessor.class);
@@ -251,6 +261,7 @@ final class PostProcessorRegistrationDelegate {
 
 		// Re-register post-processor for detecting inner beans as ApplicationListeners,
 		// moving it to the end of the processor chain (for picking up proxies etc).
+		// 最后将 ApplicationListenerDetector 这个后置处理器重新放入到 beanPostProcessors，目的是为了将其放入到后置处理器的最末端
 		beanFactory.addBeanPostProcessor(new ApplicationListenerDetector(applicationContext));
 	}
 

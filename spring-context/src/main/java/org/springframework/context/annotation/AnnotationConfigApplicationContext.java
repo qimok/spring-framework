@@ -63,7 +63,10 @@ public class AnnotationConfigApplicationContext extends GenericApplicationContex
 	 * through {@link #register} calls and then manually {@linkplain #refresh refreshed}.
 	 */
 	public AnnotationConfigApplicationContext() {
+		// 先调用父类的构造器，初始化 DefaultListableBeanFactory
+		// 初始化 Bean 的读取器，并向 Spring 中注册 7 个 Spring 自带的类，这里的注册是指将这 7 个类对应的 BeanDefinition 放入到 BeanDefinitionMap 中
 		this.reader = new AnnotatedBeanDefinitionReader(this);
+		// 初始化扫描器
 		this.scanner = new ClassPathBeanDefinitionScanner(this);
 	}
 
@@ -84,8 +87,12 @@ public class AnnotationConfigApplicationContext extends GenericApplicationContex
 	 * {@link Configuration @Configuration} classes
 	 */
 	public AnnotationConfigApplicationContext(Class<?>... componentClasses) {
+		// 初始化 Bean 的读取器和扫描器（扫描父类 GenericApplicationContext 的无参构造函数，
+		// 初始化一个 BeanFactory >> DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();）
 		this();
+		// 将配置类注册进 BeanDefinitionMap 中
 		register(componentClasses);
+		// 整个 Spring 容器的核心，在这个方法中进行了 Bean 的实例化、初始化、自动装配、AOP 等功能
 		refresh();
 	}
 
