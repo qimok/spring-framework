@@ -500,6 +500,10 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 
 		try {
 			// Give BeanPostProcessors a chance to return a proxy instead of the target bean instance.
+			// 此方法在 Bean 实例化之前调用，是第一次调用后置处理器（执行所有 InstantiationAwareBeanPostProcessor 的子类）
+			// 如果 InstantiationAwareBeanPostProcessor 的子类的 postProcessBeforeInstantiation() 方法返回值不为空，表示 Bean 需要被增强
+			// 在 Bean 的实例化之前对 Bean 进行处理
+			// Spring 的 AOP 就是在这里实现的（AnnotationAwareAspectJAutoProxyCreator）
 			Object bean = resolveBeforeInstantiation(beanName, mbdToUse);
 			if (bean != null) {
 				return bean;
@@ -511,6 +515,11 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		}
 
 		try {
+			// 第二次执行后置处理器的入口
+			// doCreateBean() 方法进行了 Bean 的实例化、初始化等操作
+			// doCreateBean() >> createBeanInstance（负责实例化一个 bean 对象）
+			// 					 -> addSingletonFactory（将单例对象的引用通过 ObjectFactory 保存下来，然后将 ObjectFactory 缓存在 Map 中）
+			// 					 -> populateBean（主要是执行依赖注入）
 			Object beanInstance = doCreateBean(beanName, mbdToUse, args);
 			if (logger.isTraceEnabled()) {
 				logger.trace("Finished creating instance of bean '" + beanName + "'");
@@ -551,6 +560,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			instanceWrapper = this.factoryBeanInstanceCache.remove(beanName);
 		}
 		if (instanceWrapper == null) {
+			// 实例化 Bean（第二次执行后置处理器的入口），第二次执行后置处理器，主要是为了推断出实例化 Bean 所需要的构造器
 			instanceWrapper = createBeanInstance(beanName, mbd, args);
 		}
 		Object bean = instanceWrapper.getWrappedInstance();
@@ -560,9 +570,14 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		}
 
 		// Allow post-processors to modify the merged bean definition.
+		// 此时 Bean 对象已经创建成功，但是没有设置属性和经过其它后置处理器处理
 		synchronized (mbd.postProcessingLock) {
 			if (!mbd.postProcessed) {
 				try {
+					// 第三次执行后置处理器，缓存 Bean 的注解元数据信息（用于后面在进行属性填充时使用）
+					// 这一步对于 CommonAnnotationBeanPostProcessor、AutowiredAnnotationBeanPostProcessor、RequiredAnnotationBeanPostProcessor 这一类处理器
+					// 主要是将 Bean 的注解信息解析出来，然后缓存到后置处理器中的 injectionMetadataCache 属性中
+					// 而对于 ApplicationListenerDetector 处理器，而是将 Bean 是否是单例的标识存于 singletonNames 这个 Map 类型的属性中
 					applyMergedBeanDefinitionPostProcessors(mbd, beanType, beanName);
 				}
 				catch (Throwable ex) {
@@ -575,6 +590,8 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 
 		// Eagerly cache singletons to be able to resolve circular references
 		// even when triggered by lifecycle interfaces like BeanFactoryAware.
+		// 判断一个 Bean 是否放入到 singletonFactories 中（提前暴露出来，可以解决循环依赖的问题）
+		// 允许单例 Bean 提前暴露
 		boolean earlySingletonExposure = (mbd.isSingleton() && this.allowCircularReferences &&
 				isSingletonCurrentlyInCreation(beanName));
 		if (earlySingletonExposure) {
@@ -582,13 +599,21 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 				logger.trace("Eagerly caching bean '" + beanName +
 						"' to allow for resolving potential circular references");
 			}
-			addSingletonFactory(beanName, () -> getEarlyBeanReference(beanName, mbd, bean));
+			// 第四次出现后置处理器
+			// 新建并将 bean 缓存到 singletonFactories
+			// 获取提前暴露的对象，可以解决循环引用的问题，实际上提前暴露出来的 Bean 是放入到 singletonFactories 中，key 是 beanName，value 是一个 lambda 表达式
+			addSingletonFactory(beanName,
+					// 如果忽略 BeanPostProcessor 逻辑，该方法实际就是直接返回 bean 对象
+					// 而这里的 bean 对象就是前面实例化的对象
+					() -> getEarlyBeanReference(beanName, mbd, bean));
 		}
 
 		// Initialize the bean instance.
 		Object exposedObject = bean;
 		try {
+			// 依赖注入：填充属性，第五次、第六次后置处理器入口
 			populateBean(beanName, mbd, instanceWrapper);
+			// 第七次、第八次执行后置处理器入口
 			exposedObject = initializeBean(beanName, exposedObject, mbd);
 		}
 		catch (Throwable ex) {
@@ -943,6 +968,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			for (BeanPostProcessor bp : getBeanPostProcessors()) {
 				if (bp instanceof SmartInstantiationAwareBeanPostProcessor) {
 					SmartInstantiationAwareBeanPostProcessor ibp = (SmartInstantiationAwareBeanPostProcessor) bp;
+					// 调用后置处理的方法获取 Bean 早期暴露出来的 Bean 对象（半成品）
 					exposedObject = ibp.getEarlyBeanReference(exposedObject, beanName);
 				}
 			}
@@ -1139,6 +1165,15 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 	 * @see #instantiateUsingFactoryMethod
 	 * @see #autowireConstructor
 	 * @see #instantiateBean
+	 *
+	 * 此方法通过反射创建对象时，会先执行后置处理器，通过调用后置处理器的 deternineCondidateConstructors() 方法推断出使用哪一个构造器来创建 Bean
+	 * 典型的代表类有 AutowiredAnnotationBeanPostProcessor
+	 *
+	 * Bean 被通过反射创建完成后，会再次调用后置处理器 MergedBeanDefinitionPostProcessor.postProcessMargedBeanDefinition() 方法，这一步
+	 * 执行后置处理器的目的时为了找出加了 @Autowired 等注解实现自动装配，这一步的代表后置处理器有 AutowiredAnnotationBeanPostProcessor、CommonAnnotationBeanPostProcessor
+	 *
+	 * AutowiredAnnotationBeanPostProcessor 是用来处理 Spring 提供的注解和 JSR-330 中的部分注解，如：@Autowired、@Value、@Inject
+	 * CommonAnnotationBeanPostProcessor 是用来处理 JSR-250 中的注解，如 @Resource、@PostConstruct、@PreDestory
 	 */
 	protected BeanWrapper createBeanInstance(String beanName, RootBeanDefinition mbd, @Nullable Object[] args) {
 		// Make sure bean class is actually resolved at this point.

@@ -599,6 +599,10 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 
 				// Last step: publish corresponding event.
 				// 11、结束 refresh，发布一个事件 ContextRefreshEvent，通知大家 Spring 容器 refresh 结束了（即 ApplicationContext 初始化完成）
+				//     执行到这一步，Spring 容器的启动基本结束了，此时 Bean 已经被实例化完成，且完成了自动装配。执行 finishRefresh() 方法，是为了在容器
+				//     refresh() 结束时，做一些其它的操作，如：发布 ContextRefreshedEvent 事件，这样当我们想在 容器 refresh 完成后执行一些特殊的逻辑，
+				//     就可以通过监听 ContextRefreshedEvent 事件来实现。Spring 内置了四个应用上下文（ApplicationContextEvent）有关的事件：
+				//     ContextRefreshedEvent、ContextStartedEvent、ContextStopedEvent、ContextClosedEvent
 				finishRefresh();
 			}
 

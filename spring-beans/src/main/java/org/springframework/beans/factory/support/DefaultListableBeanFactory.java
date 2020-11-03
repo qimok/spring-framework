@@ -829,6 +829,7 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 		return (this.configurationFrozen || super.isBeanEligibleForMetadataCaching(beanName));
 	}
 
+	// 不论是 FactoryBean 还是普通的 Bean，最终都是调用 getBean() 方法去创建 Bean
 	@Override
 	public void preInstantiateSingletons() throws BeansException {
 		if (logger.isTraceEnabled()) {
@@ -843,7 +844,10 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 		for (String beanName : beanNames) {
 			RootBeanDefinition bd = getMergedLocalBeanDefinition(beanName);
 			if (!bd.isAbstract() && bd.isSingleton() && !bd.isLazyInit()) {
+				// 判断是否是 FactoryBean，如果是 FactoryBean，则进行 FactoryBean 原生的实例化（非 getObject() 方法对应的对象）
+				// 还需要判断它是否立即实例化 getObject() 返回的对象，根据 SmartFactoryBean 的 isEagerInit() 的返回值判断是否需要立即实例化
 				if (isFactoryBean(beanName)) {
+					// 首先实例化 FactoryBean 的原生对象，然后再根据 isEagerInit() 判断是否实例化 BeanFactory 中 getObject() 返回的类型的对象
 					Object bean = getBean(FACTORY_BEAN_PREFIX + beanName);
 					if (bean instanceof FactoryBean) {
 						FactoryBean<?> factory = (FactoryBean<?>) bean;
@@ -858,6 +862,7 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 									((SmartFactoryBean<?>) factory).isEagerInit());
 						}
 						if (isEagerInit) {
+							// 如果 isEagerInit 为 true，则立即实例化 FactoryBean 所返回的类型的对象
 							getBean(beanName);
 						}
 					}
@@ -869,6 +874,7 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 		}
 
 		// Trigger post-initialization callback for all applicable beans...
+		// 在 Bean 实例化以及属性赋值完成后，如果 Bean 实现了 SmartInitializingSingleton 接口，则回调该接口的方法
 		for (String beanName : beanNames) {
 			Object singletonInstance = getSingleton(beanName);
 			if (singletonInstance instanceof SmartInitializingSingleton) {
