@@ -46,20 +46,27 @@ import org.springframework.aop.SpringProxy;
 @SuppressWarnings("serial")
 public class DefaultAopProxyFactory implements AopProxyFactory, Serializable {
 
+	/**
+	 * 入参 AdvisedSupport config 中包含了需要注册的拦截器，AopProxy 会保存这个 config 为 advised 对象。
+	 */
 	@Override
 	public AopProxy createAopProxy(AdvisedSupport config) throws AopConfigException {
 		if (config.isOptimize() || config.isProxyTargetClass() || hasNoUserSuppliedProxyInterfaces(config)) {
+			// 如果是需要优化的代理、或者标记代理目标类、或者代理配置中没有需要代理的接口
 			Class<?> targetClass = config.getTargetClass();
 			if (targetClass == null) {
 				throw new AopConfigException("TargetSource cannot determine target class: " +
 						"Either an interface or a target is required for proxy creation.");
 			}
 			if (targetClass.isInterface() || Proxy.isProxyClass(targetClass)) {
+				// 如果目标类是接口，或者已经是 Jdk 的动态代理，则创建 Jdk 动态代理
 				return new JdkDynamicAopProxy(config);
 			}
+			// 否则创建 Cglib 动态代理
 			return new ObjenesisCglibAopProxy(config);
 		}
 		else {
+			// 如果声明创建 Jdk 动态代理则返回 Jdk 动态代理
 			return new JdkDynamicAopProxy(config);
 		}
 	}
